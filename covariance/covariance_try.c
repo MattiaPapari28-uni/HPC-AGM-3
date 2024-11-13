@@ -63,6 +63,7 @@ static void kernel_covariance(int m, int n,
     for (j = 0; j < _PB_M; j++)
     {
         mean[j] = 0.0;
+        #pragma omp parallel for 
         for (i = 0; i < _PB_N; i++)
             mean[j] += data[i][j];
         mean[j] /= float_n;
