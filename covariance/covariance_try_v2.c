@@ -63,7 +63,7 @@ static void kernel_covariance(int m, int n,
     for (j = 0; j < _PB_M; j++)
 	    mean[j] = 0.0;
 
-    #pragma omp parallel for collapse(2) private(i) shared(mean)  // each thread safely accumulate values into mean[j] independently, combining results at the end 
+    #pragma omp parallel for collapse(2) private(i) reduction(+:mean[:_PB_M])   // each thread safely accumulate values into mean[j] independently, combining results at the end 
     for (j = 0; j < _PB_M; j++)
 	    for (i = 0; i < _PB_N; i++)
 		mean[j] += data[i][j];	
