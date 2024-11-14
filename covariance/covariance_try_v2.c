@@ -36,13 +36,15 @@ void print_array(int m,
 
 {
   int i, j;
-
+  FILE *ftpr;
+  ftpr = fopen("file.txt", "w");
   for (i = 0; i < m; i++)
     for (j = 0; j < m; j++) {
-      fprintf (stderr, DATA_PRINTF_MODIFIER, symmat[i][j]);
-      if ((i * m + j) % 20 == 0) fprintf (stderr, "\n");
+      fprintf (ftpr, DATA_PRINTF_MODIFIER, symmat[i][j]);
+      if ((i * m + j) % 20 == 0) fprintf (ftpr, "\n");
     }
-  fprintf (stderr, "\n");
+  fprintf (ftpr, "\n");
+  fclose(ftpr);
 }
 
 
@@ -59,15 +61,16 @@ static void kernel_covariance(int m, int n,
     int i, j, j1, j2;
 
     /* Determine mean of column vectors of input data matrix */
-    #pragma omp parallel for 
+    #pragma omp parallel for
     for (j = 0; j < _PB_M; j++)
 	    mean[j] = 0.0;
 
     #pragma omp parallel for collapse(2) private(i) reduction(+:mean[:_PB_M])   // each thread safely accumulate values into mean[j] independently, combining results at the end 
     for (j = 0; j < _PB_M; j++)
 	    for (i = 0; i < _PB_N; i++)
-		mean[j] += data[i][j];	
-    #pragma omp parallel for shared(mean)
+		    mean[j] += data[i][j];
+
+    #pragma omp parallel for
     for (j = 0; j < _PB_M; j++)
 	    mean[j] /= float_n;
     /* Center the column vectors. */
@@ -75,26 +78,25 @@ static void kernel_covariance(int m, int n,
     for (i = 0; i < _PB_N; i++)
 	    for (j = 0; j < _PB_M; j++)
 		    data[i][j] -= mean[j];
-
+    //print_array(m, POLYBENCH_ARRAY(data));
     /* Calculate the m * m covariance matrix. */
 
-    #pragma omp parallel for private(j2)
+      /*  #pragma omp parallel for private(j2)
     for (j1 = 0; j1 < _PB_M; j1++)
        	for (j2 = j1; j2 < _PB_M; j2++)
-            symmat[j1][j2] = 0.0;
+            symmat[j1][j2] = 0.0;*/
 
     #pragma omp parallel for private(i,j2)
     for (j1 = 0; j1 < _PB_M; j1++)
-       	for (j2 = j1; j2 < _PB_M; j2++) 
-	{
-		//#pragma omp parallel for shared(symmat)
-		for (i = 0; i < _PB_N; i++)
-                	symmat[j1][j2] += data[i][j1];
-    		
-                symmat[j2][j1] = symmat[j1][j2];
-		
-	}
+       	for (j2 = j1; j2 < _PB_M; j2++) {
+          double temp_sum = 0.0;
+          for (i = 0; i < _PB_N; i++)
+              temp_sum += data[i][j1] * data[i][j2];
 
+          symmat[j1][j2] = temp_sum;
+          symmat[j2][j1] = temp_sum;
+        }
+  //printf("%f\n", symmat[1][1]);
 }
 
 
@@ -137,4 +139,3 @@ int main(int argc, char** argv)
 
   return 0;
 }
-
