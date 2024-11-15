@@ -73,20 +73,15 @@ static void kernel_covariance(int m, int n,
     #pragma omp parallel for
     for (j = 0; j < _PB_M; j++)
 	    mean[j] /= float_n;
+
     /* Center the column vectors. */
     #pragma omp parallel for collapse(2) private(i, j) shared(data)
     for (i = 0; i < _PB_N; i++)
 	    for (j = 0; j < _PB_M; j++)
 		    data[i][j] -= mean[j];
-    //print_array(m, POLYBENCH_ARRAY(data));
+
     /* Calculate the m * m covariance matrix. */
-
-      /*  #pragma omp parallel for private(j2)
-    for (j1 = 0; j1 < _PB_M; j1++)
-       	for (j2 = j1; j2 < _PB_M; j2++)
-            symmat[j1][j2] = 0.0;*/
-
-    #pragma omp parallel for private(i,j2)
+    #pragma omp parallel for schedule(dynamic, (_PB_M / (4 * omp_get_max_threads()))) private(i,j2)
     for (j1 = 0; j1 < _PB_M; j1++)
        	for (j2 = j1; j2 < _PB_M; j2++) {
           double temp_sum = 0.0;
@@ -96,7 +91,6 @@ static void kernel_covariance(int m, int n,
           symmat[j1][j2] = temp_sum;
           symmat[j2][j1] = temp_sum;
         }
-  //printf("%f\n", symmat[1][1]);
 }
 
 
