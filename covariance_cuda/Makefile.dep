@@ -1,0 +1,2 @@
+covariance.o: covariance.c ../../utilities/polybench.h covariance.h
+polybench.o: ../../utilities/polybench.c
