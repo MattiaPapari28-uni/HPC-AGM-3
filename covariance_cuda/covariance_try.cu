@@ -13,27 +13,46 @@
 __global__ void kernel_covariance(DATA_TYPE float_n, DATA_TYPE* __restrict__ data, DATA_TYPE* __restrict__ mean, DATA_TYPE* __restrict__ symmat)
 {   
     // Compute the row (i) and column (j) indices for this thread
-    int i = blockIdx.y * blockDim.y + threadIdx.y;
-    int j = blockIdx.x * blockDim.x + threadIdx.x;
-
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    int j = blockIdx.y * blockDim.y + threadIdx.y;
+    int tid = threadIdx.y;
+    int index = j * blockDim.x * gridDim.x + i; //indice globale
     // Ensure we are within bounds
-    if (i < M && j < N) {
-        data[i * N + j] = ((DATA_TYPE)i * j) / M;
-        // eventuale __syncthreads(); ?????
-
-        // valutare utilizzo __device__ e inline, per richiamrefunzioni con parti di codice pulizia codice
+    if (index < M * N and tid < M) {
+        data[index] = ((DATA_TYPE)i * j) / M;
+        symmat[index] = 0.0;
+        // valutare utilizzo __device__ e inline, per richiamre funzioni con parti di codice pulizia codice
 
         /* Determine mean of column vectors of input data matrix */
-        mean[j] = 0.0;
+        mean[tid] = 0.0;
         __syncthreads();
         
-        for (k = 0; k < _PB_N; k++)
-            mean[k] += data[i][j];
+        atomicAdd(mean[tid], data[index]);
+        __syncthreads();
 
-        
-        int ifromAtomic = atomicAdd(mean[j], float_n);
+        if (atomicCAS(&flags[tid], 0, 1) == 0) {
+            // Esegui la divisione una sola volta
+            mean[tid] /= float_n;
+        }        
+
+        /*
+        for (j < _PB_M; j++)
+          if(threadIdx.x == j)
+              lock.lock();
+              mean[j] /= float_n;
+              lock.unlock();
+        */
         __syncthreads();
-        
+       
+        atomicSub(data[index], mean[tid]);
+        //__syncthreads();
+
+        __shared__ DATA_TYPE temp = 0.0;
+
+        if(tid+1 < M)
+          temp += data[i][tid] * data[i][tid+1];
+
+
     }
 
   /*int i, j, j1, j2;
@@ -54,16 +73,16 @@ __global__ void kernel_covariance(DATA_TYPE float_n, DATA_TYPE* __restrict__ dat
     
     for (i = 0; i < N; i++)
       for (j = 0; j < M; j++)
-	data[i j] -= mean[j];*/
+	      data[i j] -= mean[j];
       
     
     /*for (j1 = 0; j1 < M; j1++)
-      for (j2 = j1; j2 < M; j2++)
-	{
+        for (j2 = j1; j2 < M; j2++)
+	      {
           symmat[j1 j2] = 0.0;
-	  for (i = 0; i < N; i++)
-	    symmat[j1][j2] += data[i][j1] * data[i][j2];
-	  symmat[j2][j1] = symmat[j1][j2];
+	        for (i = 0; i < N; i++)
+	          symmat[j1][j2] += data[i][j1] * data[i][j2];
+	        symmat[j2][j1] = symmat[j1][j2];
         }*/
 }
 
@@ -77,7 +96,10 @@ int main(int argc, char** argv)
   DATA_TYPE float_n = 1.2;
   DATA_TYPE *h_symmat;
   DATA_TYPE *d_mean, *d_data, *d_symmat;
+  int* d_flags;
 
+  cudaMalloc(&d_flags, size * sizeof(int));
+  cudaMemset(d_flags, 0, size * sizeof(int));
   cudaMallocHost((void**)&h_symmat,sizeof(DATA_TYPE) * M * M); 
   cudaMalloc((void**)&d_data, sizeof(DATA_TYPE) * M * N);
   cudaMalloc((void**)&d_mean, sizeof(DATA_TYPE) * M);
@@ -87,9 +109,8 @@ int main(int argc, char** argv)
   clock_gettime(CLOCK_REALTIME, rt + 0); // non va dopo?
   dim3 dimBlock(BLOCK_DIM, BLOCK_DIM); 
   dim3 dimGrid(((N+BLOCK_DIM-1)/BLOCK_DIM)/2, ((N+BLOCK_DIM-1)/BLOCK_DIM)/2);
-  printf("%d", ((N+BLOCK_DIM-1)/BLOCK_DIM)/2);
   /* Run kernel. */
-  kernel_covariance<<<dimGrid,dimBlock>>>(float_n, d_data, d_mean, d_symmat); // perchè 1,1?? gridDim,blockDim 
+  kernel_covariance<<<dimGrid,dimBlock>>>(float_n, d_data, d_mean, d_symmat);  
   cudaMemcpy(h_symmat, d_symmat, sizeof(DATA_TYPE) * M * M, cudaMemcpyDeviceToHost);
   /* Stop and print timer. */
   clock_gettime(CLOCK_REALTIME, rt + 1);
