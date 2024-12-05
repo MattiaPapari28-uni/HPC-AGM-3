@@ -33,17 +33,18 @@ __global__ void kernel_covariance(DATA_TYPE float_n, DATA_TYPE* data, DATA_TYPE*
     // Compute the row (i) and column (j) indices for this thread
     int tidy = threadIdx.y; //indice della colonna
     int tidx = threadIdx.x;
-    int i = blockIdx.x * blockDim.x + tidx; //fino a M
-    int j = blockIdx.y * blockDim.y + tidy;
+    int j = blockIdx.x * blockDim.x + tidx; //fino a M
+    int i = blockIdx.y * blockDim.y + tidy;
     //int index = j * blockDim.x * gridDim.x + i; //indice globale
     // Ensure we are within bounds
     if (i < M and j < N) {
         data[i * M + j] = ((DATA_TYPE)i * j) / M;
         __syncthreads();
       
-        atomicAddDouble(&mean[j], data[i + j * M]);
+        atomicAddDouble(&mean[j], data[i * M + j]);
         __syncthreads();
-
+        //fino a qui va bene
+        
         /*if (atomicCAS(&flags[index], 0, 1) == 0) {
             // Esegui la divisione una sola volta
             printf("%f\n", mean[index]);
@@ -116,7 +117,7 @@ void print_array(DATA_TYPE* h_symmat)
   int i;
   FILE *ftpr;
   ftpr = fopen("file2.txt", "w");
-  for (i = 0; i < M * M; i++) {
+  for (i = 0; i < M; i++) {
       fprintf (ftpr, DATA_PRINTF_MODIFIER, h_symmat[i]);
       if ((i) % 20 == 0) fprintf (ftpr, "\n");
     }
@@ -150,7 +151,7 @@ int main(int argc, char** argv)
   dim3 dimGrid(((N+BLOCK_DIM-1)/BLOCK_DIM), ((N+BLOCK_DIM-1)/BLOCK_DIM));
   /* Run kernel. */
   kernel_covariance<<<dimGrid,dimBlock>>>(float_n, d_data, d_mean, d_symmat, d_flags);  
-  cudaMemcpy(h_symmat, d_data, sizeof(DATA_TYPE) * M * M, cudaMemcpyDeviceToHost);
+  cudaMemcpy(h_symmat, d_mean, sizeof(DATA_TYPE) * M, cudaMemcpyDeviceToHost);
   /* Stop and print timer. */
   clock_gettime(CLOCK_REALTIME, rt + 1);
   wt = (rt[1].tv_sec - rt[0].tv_sec) + 1.0e-9 * (rt[1].tv_nsec - rt[0].tv_nsec);
