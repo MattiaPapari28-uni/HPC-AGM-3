@@ -28,43 +28,37 @@ __device__ double atomicAddDouble(double* address, double val)
     return __longlong_as_double(old);
 }
 
-__global__ void kernel_covariance(DATA_TYPE float_n, DATA_TYPE* __restrict__ data, DATA_TYPE* __restrict__ mean, DATA_TYPE* __restrict__ symmat, int* flags)
+__global__ void kernel_covariance(DATA_TYPE float_n, DATA_TYPE* data, DATA_TYPE* mean, DATA_TYPE* symmat, int* flags)
 {   
     // Compute the row (i) and column (j) indices for this thread
     int tidy = threadIdx.y; //indice della colonna
     int tidx = threadIdx.x;
-    int i = blockIdx.x * blockDim.x + tidx;
+    int i = blockIdx.x * blockDim.x + tidx; //fino a M
     int j = blockIdx.y * blockDim.y + tidy;
-    int index = j * blockDim.x * gridDim.x + i; //indice globale
+    //int index = j * blockDim.x * gridDim.x + i; //indice globale
     // Ensure we are within bounds
-    if (index < M * N and tidy < M) {
-        data[index] = ((DATA_TYPE)i * j) / M;
-        symmat[index] = 0.0;
-        // valutare utilizzo __device__ e inline, per richiamre funzioni con parti di codice pulizia codice
-
-        /* Determine mean of column vectors of input data matrix */
-        mean[tidy] = 0.0;
+    if (i < M and j < N) {
+        data[i * M + j] = ((DATA_TYPE)i * j) / M;
         __syncthreads();
-        
-        atomicAddDouble(&mean[tidy], data[index]);
+      
+        atomicAddDouble(&mean[j], data[i + j * M]);
         __syncthreads();
 
-        if (!atomicCAS(&flags[tidy], 0, 1)) {
+        /*if (atomicCAS(&flags[index], 0, 1) == 0) {
             // Esegui la divisione una sola volta
-            mean[tidy] /= float_n;
-        }        
+            printf("%f\n", mean[index]);
+            mean[index] /= float_n;
+        }  
         
-         __syncthreads();
-        /*
         for (j < _PB_M; j++)
           if(threadIdx.x == j)
               lock.lock();
               mean[j] /= float_n;
               lock.unlock();
-        */
+        
        
        
-        atomicAddDouble(&data[index], -mean[tidy]);
+        atomicAddDouble(&data[index], -(mean[index] / float_n));
         __syncthreads();
 
         //__shared__ DATA_TYPE temp;
@@ -80,7 +74,7 @@ __global__ void kernel_covariance(DATA_TYPE float_n, DATA_TYPE* __restrict__ dat
           }
           symmat[j1 * M + j2] = sum;
           symmat[j2 * M + j1] = sum; 
-        }
+        }*/
 
     }
 
@@ -148,14 +142,15 @@ int main(int argc, char** argv)
   cudaMalloc((void**)&d_data, sizeof(DATA_TYPE) * M * N);
   cudaMalloc((void**)&d_mean, sizeof(DATA_TYPE) * M);
   cudaMalloc((void**)&d_symmat, sizeof(DATA_TYPE) * M * M);
-  
+  cudaMemset(d_symmat, 0, M * M * sizeof(DATA_TYPE));
+  cudaMemset(d_mean, 0, M * sizeof(DATA_TYPE));
   /* Start timer. */
   clock_gettime(CLOCK_REALTIME, rt + 0); // non va dopo?
   dim3 dimBlock(BLOCK_DIM, BLOCK_DIM); 
-  dim3 dimGrid(((N+BLOCK_DIM-1)/BLOCK_DIM)/2, ((N+BLOCK_DIM-1)/BLOCK_DIM)/2);
+  dim3 dimGrid(((N+BLOCK_DIM-1)/BLOCK_DIM), ((N+BLOCK_DIM-1)/BLOCK_DIM));
   /* Run kernel. */
   kernel_covariance<<<dimGrid,dimBlock>>>(float_n, d_data, d_mean, d_symmat, d_flags);  
-  cudaMemcpy(h_symmat, d_symmat, sizeof(DATA_TYPE) * M * M, cudaMemcpyDeviceToHost);
+  cudaMemcpy(h_symmat, d_data, sizeof(DATA_TYPE) * M * M, cudaMemcpyDeviceToHost);
   /* Stop and print timer. */
   clock_gettime(CLOCK_REALTIME, rt + 1);
   wt = (rt[1].tv_sec - rt[0].tv_sec) + 1.0e-9 * (rt[1].tv_nsec - rt[0].tv_nsec);
