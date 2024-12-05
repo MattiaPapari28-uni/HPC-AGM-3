@@ -69,8 +69,18 @@ __global__ void kernel_covariance(DATA_TYPE float_n, DATA_TYPE* __restrict__ dat
 
         //__shared__ DATA_TYPE temp;
 
-        symmat[index] += data[index] * data[index];
+        int j1 = blockIdx.x * blockDim.x + threadIdx.x;
+        int j2 = blockIdx.y * blockDim.y + threadIdx.y;
 
+        // Ensure indices are within bounds
+        if (j1 < M && j2 < M && j1 <= j2) {  // Per calcolare solo la metà alta, in modo da non computare tutto che tanto con la simmetrica non conviene
+          float sum = 0.0f;
+          for (int i = 0; i < N; i++) {
+            sum += data[i * M + j1] * data[i * M + j2];
+          }
+          symmat[j1 * M + j2] = sum;
+          symmat[j2 * M + j1] = sum; 
+        }
 
     }
 
@@ -99,7 +109,7 @@ __global__ void kernel_covariance(DATA_TYPE float_n, DATA_TYPE* __restrict__ dat
         for (j2 = j1; j2 < M; j2++)
 	      {
           symmat[j1 j2] = 0.0;
-	        for (i = 0; i < N; i++)
+	        for (i   = 0; i < N; i++)
 	          symmat[j1][j2] += data[i][j1] * data[i][j2];
 	        symmat[j2][j1] = symmat[j1][j2];
         }
