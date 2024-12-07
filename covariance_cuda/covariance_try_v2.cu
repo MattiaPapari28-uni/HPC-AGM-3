@@ -45,7 +45,7 @@ __global__ void kernel_calc_mean(DATA_TYPE* data, DATA_TYPE* mean)
     }
 }
 
-__global__ void kernel_covariance(DATA_TYPE* data, DATA_TYPE* mean, int* flags, DATA_TYPE float_n)
+__global__ void kernel_covariance(DATA_TYPE* data, DATA_TYPE* mean, int* flags, DATA_TYPE float_n, DATA_TYPE* symmat)
   {   
     // Compute the row (i) and column (j) indices for this thread
     int tidy = threadIdx.y; //indice della colonna
@@ -59,24 +59,28 @@ __global__ void kernel_covariance(DATA_TYPE* data, DATA_TYPE* mean, int* flags, 
         __syncthreads();
        
         atomicAddDouble(&data[i * M + j], -(mean[j]));
-        
-
         //__shared__ DATA_TYPE temp;
 
-        /*int j1 = blockIdx.x * blockDim.x + threadIdx.x;
-        int j2 = blockIdx.y * blockDim.y + threadIdx.y;
+        //int j1 = blockIdx.x * blockDim.x + threadIdx.x;
+        //int j2 = blockIdx.y * blockDim.y + threadIdx.y;
+        DATA_TYPE sum = 0.0;
 
         // Ensure indices are within bounds
-        if (j1 < M && j2 < M && j1 <= j2) {  // Per calcolare solo la metà alta, in modo da non computare tutto che tanto con la simmetrica non conviene
-          float sum = 0.0f;
-          for (int i = 0; i < N; i++) {
-            sum += data[i * M + j1] * data[i * M + j2];
-          }
-          symmat[j1 * M + j2] = sum;
-          symmat[j2 * M + j1] = sum; 
-        }*/
+		
+//	__syncthreads();
+         
+	for (int k = 0; k < N; k++) {
+           //printf("%d\n", (data[k * M + j] * data[k * M + i]));
+	  // atomicAddDouble(&sum, (data[k * M + j] * data[k * M + i]));
+          sum += (data[k * M + j] * data[k * M + i]);
+	}
 
+	symmat[j * M + i] = sum;
+        symmat[i * M + j] = sum;
+	//symmat[i * M + j] = symmat[j * M + i]; 
     }
+
+    //printf("%d\n", symmat[i]);
 
   /*int i, j, j1, j2;
 
@@ -154,18 +158,20 @@ int main(int argc, char** argv)
   kernel_calc_mean<<<dimGrid,dimBlock>>>(d_data, d_mean); //calcolo il vettore mean in un kernel a parte così da poter risolvere i problemi di sincronizzazione  
   cudaMemcpy(h_mean, d_mean, sizeof(DATA_TYPE) * M, cudaMemcpyDeviceToHost);
   cudaMemcpy(h_data, d_data, sizeof(DATA_TYPE) * M * M, cudaMemcpyDeviceToHost);
-  kernel_covariance<<<dimGrid,dimBlock>>>(d_data, d_mean, d_flags, float_n);
-  cudaMemcpy(h_data, d_data, sizeof(DATA_TYPE) * M * M, cudaMemcpyDeviceToHost);
+  kernel_covariance<<<dimGrid,dimBlock>>>(d_data, d_mean, d_flags, float_n, d_symmat);
+  cudaMemcpy(h_symmat, d_symmat, sizeof(DATA_TYPE) * M * M, cudaMemcpyDeviceToHost);
   /* Stop and print timer. */
   clock_gettime(CLOCK_REALTIME, rt + 1);
   wt = (rt[1].tv_sec - rt[0].tv_sec) + 1.0e-9 * (rt[1].tv_nsec - rt[0].tv_nsec);
   printf("GEMM (device) : %9.3f sec %9.1f GFLOPS\n", wt, 2.0 * N * N * N / (1.0e9 * wt));
-  print_array(h_data);
+  print_array(h_symmat);
 
   /* Be clean. */
   cudaFree(d_data);
   cudaFree(d_symmat);
   cudaFree(d_mean);
+  cudaFreeHost(h_data);
+  cudaFreeHost(h_mean);
   cudaFreeHost(h_symmat);
 
   return 0;
