@@ -108,7 +108,6 @@ int main(int argc, char** argv)
   clock_gettime(CLOCK_REALTIME, rt + 1);
   wt = (rt[1].tv_sec - rt[0].tv_sec) + 1.0e-9 * (rt[1].tv_nsec - rt[0].tv_nsec);
   printf("GEMM (device) : %9.3f sec %9.1f GFLOPS\n", wt, 2.0 * N * N * N / (1.0e9 * wt));
-  print_array(h_symmat);
 
   /* Be clean. */
   cudaFree(h_data);
